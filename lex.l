@@ -7,13 +7,12 @@
 %{
 
 #include <stdio.h>
-#include <string.h>
 #include "node.h"
 #include "y.tab.h"
 extern FILE *yyin;
 extern char *yytext;
 
-nodeType * createLeave(char* nodetext, int nodetype);
+nodeType * id(char* i);
 
 %}
 
@@ -50,49 +49,58 @@ FOR         for
 ID          [a-zA-Z][a-zA-Z]*
 
 %%
-{INT}       	{yylval.Node = createLeave(yytext, 1); return INT;}
-{SEMI}      	{yylval.Node = createLeave(yytext, 3); return SEMI;}
-{COMMA}     	{yylval.Node = createLeave(yytext, 3); return COMMA;}
-{DOT}       	{yylval.Node = createLeave(yytext, 3); return DOT;}
-{BINARYOP3}     {yylval.Node = createLeave(yytext, 3); return BINARYOP3;}
-{BINARYOP4}     {yylval.Node = createLeave(yytext, 3); return BINARYOP4;}
-{BINARYOP5}     {yylval.Node = createLeave(yytext, 3); return BINARYOP5;}
-{BINARYOP6}     {yylval.Node = createLeave(yytext, 3); return BINARYOP6;}
-{BINARYOP7}     {yylval.Node = createLeave(yytext, 3); return BINARYOP7;}
-{BINARYOP8}     {yylval.Node = createLeave(yytext, 3); return BINARYOP8;}
-{BINARYOP9}     {yylval.Node = createLeave(yytext, 3); return BINARYOP9;}
-{BINARYOP10}    {yylval.Node = createLeave(yytext, 3); return BINARYOP10;}
-{BINARYOP11}    {yylval.Node = createLeave(yytext, 3); return BINARYOP11;}
-{BINARYOP12}    {yylval.Node = createLeave(yytext, 3); return BINARYOP12;}
-{UNARYOP}   	{yylval.Node = createLeave(yytext, 3); return UNARYOP;}
-{ASSIGNOP}  	{yylval.Node = createLeave(yytext, 3); return ASSIGNOP;}
-{TYPE}      	{yylval.Node = createLeave(yytext, 3); return TYPE;}
-{LP}        	{yylval.Node = createLeave(yytext, 3); return LP;}
-{RP}        	{yylval.Node = createLeave(yytext, 3); return RP;}
-{LB}        	{yylval.Node = createLeave(yytext, 3); return LB;}
-{RB}        	{yylval.Node = createLeave(yytext, 3); return RB;}
-{LC}        	{yylval.Node = createLeave(yytext, 3); return LC;}
-{RC}        	{yylval.Node = createLeave(yytext, 3); return RC;}
-{STRUCT}    	{yylval.Node = createLeave(yytext, 3); return STRUCT;}
-{RETURN}    	{yylval.Node = createLeave(yytext, 3); return RETURN;}
-{IF}        	{yylval.Node = createLeave(yytext, 3); return IF;}
-{ELSE}      	{yylval.Node = createLeave(yytext, 3); return ELSE;}
-{BREAK}     	{yylval.Node = createLeave(yytext, 3); return BREAK;}
-{CONT}      	{yylval.Node = createLeave(yytext, 3); return CONT;}
-{FOR}       	{yylval.Node = createLeave(yytext, 3); return FOR;}
-\n          	/* ignore */
-[ \t]+      	/* ignore whitespace */
-{ID}        	{yylval.Node = createLeave(yytext, 2); return ID;}
+{INT}       {/* When the number is hexadecimal, convert it into decimal form. */
+             if(yytext[0]=='0' && (yytext[1]=='x' || yytext[1]=='X')) yylval.iValue = strtol(yytext,NULL,16);
+             /* When the number is octal, convert it into decimal form. */
+             else if(yytext[0]=='0') yylval.iValue = strtol(yytext,NULL,8);
+             /* Return directly if the number is decimal */
+             else yylval.iValue = atoi(yytext); return INT;}
+{SEMI}      {return SEMI;}
+{COMMA}     {return COMMA;}
+{DOT}       {return DOT;}
+{BINARYOP3}     {yylval.oPerator = yytext; return BINARYOP3;}
+{BINARYOP4}     {yylval.oPerator = yytext; return BINARYOP4;}
+{BINARYOP5}     {yylval.oPerator = yytext; return BINARYOP5;}
+{BINARYOP6}     {yylval.oPerator = yytext; return BINARYOP6;}
+{BINARYOP7}     {yylval.oPerator = yytext; return BINARYOP7;}
+{BINARYOP8}     {yylval.oPerator = yytext; return BINARYOP8;}
+{BINARYOP9}     {yylval.oPerator = yytext; return BINARYOP9;}
+{BINARYOP10}    {yylval.oPerator = yytext; return BINARYOP10;}
+{BINARYOP11}    {yylval.oPerator = yytext; return BINARYOP11;}
+{BINARYOP12}    {yylval.oPerator = yytext; return BINARYOP12;}
+{UNARYOP}   {yylval.oPerator = yytext; return UNARYOP;}
+{ASSIGNOP}  {yylval.oPerator = yytext; return ASSIGNOP;}
+{TYPE}      {return TYPE;}
+{LP}        {return LP;}
+{RP}        {return RP;}
+{LB}        {return LB;}
+{RB}        {return RB;}
+{LC}        {return LC;}
+{RC}        {return RC;}
+{STRUCT}    {return STRUCT;}
+{RETURN}    {return RETURN;}
+{IF}        {return IF;}
+{ELSE}      {return ELSE;}
+{BREAK}     {return BREAK;}
+{CONT}      {return CONT;}
+{FOR}       {return FOR;}
+\n          /* ignore */
+[ \t]+      /* ignore whitespace */
+{ID}        {yylval.sIndex = yytext; yylval.nPtr = id(yytext); return ID;}
 
 %%
+#define SIZEOF_NODETYPE ((char *) &p->con - (char *)p)
 
-nodeType* createLeave(char * nodetext, int nodetype){
-	nodeType* t = (nodeType*)malloc(sizeof(nodeType));
-	t->Type = nodetype;
-	t->Son = t->Sibling = NULL;
-	t->Text = (char*)malloc(sizeof(char)*100);
-	strcpy(t->Text, nodetext);
-	return t;
+nodeType *id(char* i){
+    nodeType* p;
+    size_t nodeSize;
+    nodeSize = SIZEOF_NODETYPE + sizeof(idNodeType);
+    if((p=malloc(nodeSize)) == NULL) yyerror("out of memory");
+    char* xx = (char*)malloc(64*sizeof(char));
+    strcpy(xx,i);
+    p->type = typeId;
+    p->id.i = xx;
+    return p;
 }
 
 int yywrap(void){
