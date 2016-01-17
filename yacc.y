@@ -12,65 +12,56 @@
 #include <string.h>
 #include <ctype.h>
 #include "node.h"
-
-void yyerror(const char *str){
-    fprintf(stderr,"error: %s\n", str);
-}
-
-nodeType *opr(int oper, int nops, ...);
-nodeType *id(char * i);
-nodeType *con(int value);
-int which_operator(char * in);
-
-int sym[26];
-int temp;
-FILE *yyin;
-FILE *yyout;
-nodeType* root;
-
-typedef struct _IDT{
-    char* id;
-    int space;
-    int is_para;
-    char* num;
-} IDT;
-
-IDT* stack;
-int counter = 0;
-int stack_p = 0;
-
+#define YYDEBUG 0
 #define CODE_LEN 800
 #define ID_NUMBER 200
+FILE *yyin;
+FILE *yyout;
 
+typedef struct _stackElement{
+    char* Name;
+    int Space;
+    int Is_para;
+    char* Num;
+}stackElement;
+
+stackElement* stack;
+nodeType* root;
+nodeType* opr(char* name, int num, ...);
+int counter = 0;
+int stack_p = 0;
+int yylex(void);
+int yyerror(char *s);
+extern int yydebug;
 %}
 
 %union{
-    int iValue;
-    char* sIndex;
-    char* oPerator;
-    nodeType *nPtr;
+    nodeType *Node;
 };
 
 /* The precedence is decided from down to up. */
-%token <iValue> INT
-%token <sIndex> ID
-%token SEMI COMMA TYPE LC RC STRUCT RETURN IF ELSE BREAK CONT FOR
-%right <oPerator> ASSIGNOP
-%left  <oPerator> BINARYOP12
-%left  <oPerator> BINARYOP11
-%left  <oPerator> BINARYOP10
-%left  <oPerator> BINARYOP9
-%left  <oPerator> BINARYOP8
-%left  <oPerator> BINARYOP7
-%left  <oPerator> BINARYOP6
-%left  <oPerator> BINARYOP5
-%left  <oPerator> BINARYOP4
-%left  <oPerator> BINARYOP3
-%right <oPerator> UNARYOP
+/*%token <iValue> INT*/
+/*%token <sIndex> ID*/
+%token <Node> SEMI COMMA TYPE LC RC STRUCT RETURN IF ELSE BREAK CONT FOR ID INT
+%token <Node> ASSIGNOP BINARYOP12 BINARYOP11 BINARYOP10 BINARYOP9 BINARYOP8 BINARYOP7 BINARYOP6
+%token <Node> BINARYOP5 BINARYOP4 BINARYOP3 UNARYOP DOT LP RP LB RB
+
+%right ASSIGNOP
+%left  BINARYOP12
+%left  BINARYOP11
+%left  BINARYOP10
+%left  BINARYOP9
+%left  BINARYOP8
+%left  BINARYOP7
+%left  BINARYOP6
+%left  BINARYOP5
+%left  BINARYOP4
+%left  BINARYOP3
+%right UNARYOP
 %left  DOT LP RP LB RB
 %start PROGRAM
 
-%type <nPtr> STMT EXP EXPNULL STMTS ESTMT STMTBLOCK ARGS ARRS EXTDEF EXTDEFS EXTVARS DEFS DEF DECS DEC VAR SPEC STSPEC OPTTAG INIT FUNC PARA PARAS PROGRAM
+%type <Node> STMT EXP STMTS ESTMT STMTBLOCK ARGS ARRS EXTDEF EXTDEFS EXTVARS DEFS DEF DECS DEC VAR SPEC STSPEC OPTTAG INIT FUNC PARA PARAS PROGRAM
 
 /*
     Note that terminal 'ID' should be replaced by 'VAR' in some particular places.
@@ -78,114 +69,110 @@ int stack_p = 0;
     referred is a point of char.
 */
 %%
-PROGRAM     :   EXTDEFS { /* Do the drawing action */ $$ = opr(199, 1, $1); root = $$; /* ex($1);*/ }
+PROGRAM     :   EXTDEFS { $$ = opr("PROGRAM", 1, $1); root = $$; }
             ;
-EXTDEFS     :   EXTDEF EXTDEFS { $$ = opr(200, 2, $1, $2); }
-            |   /* */ { $$ = NULL; }
+EXTDEFS     :   EXTDEF EXTDEFS { $$ = opr("EXTDEFS", 2, $1, $2); }
+            |   /* */ { $$ = opr("EXTDEFS", 0); }
             ;
-EXTDEF      :   SPEC EXTVARS SEMI { $$ = opr(201, 3, $1, $2, opr(SEMI,0)); }
-            |   SPEC FUNC STMTBLOCK  { $$ = opr(201, 3, $1, $2, $3); }
-            |   STRUCT OPTTAG EXTVARS SEMI { $$ = opr(201, 4, opr(STRUCT,0), $2, $3, opr(SEMI,0)); } /* There is something wrong with the struct grammar, thus the modification. */
+EXTDEF      :   SPEC EXTVARS SEMI { $$ = opr("EXTDEF", 3, $1, $2, $3); }
+            |   SPEC FUNC STMTBLOCK  { $$ = opr("EXTDEF", 3, $1, $2, $3); }
             ;
-EXTVARS     :   DEC { $$ = opr(202, 1, $1); }
-            |   DEC COMMA EXTVARS { $$ = opr(202, 3, $1, opr(COMMA,0), $3); }
-            |   /* */ { $$ = NULL; }
+EXTVARS     :   DEC { $$ = opr("EXTVARS", 1, $1); }
+            |   DEC COMMA EXTVARS { $$ = opr("EXTVARS", 3, $1, $2, $3); }
+            |   /* */ { $$ = opr("EXTVARS", 0); }
             ;
-SPEC        :   TYPE { $$ = opr(203, 1, opr(TYPE,0)); }
-            |   STSPEC { $$ = opr(203, 1, $1); }
+SPEC        :   TYPE { $$ = opr("SPEC", 1, $1); printf("spec done\n"); }
+            |   STSPEC { $$ = opr("SPEC", 1, $1); }
             ;
-STSPEC      :   STRUCT OPTTAG LC DEFS RC { $$ = opr(204, 5, opr(STRUCT,0), $2, opr(LC,0), $4, opr(RC,0)); }
-            /*|   STRUCT VAR { $$ = (204, 2, opr(STRUCT,0), $2); } */
+STSPEC      :   STRUCT OPTTAG LC DEFS RC { $$ = opr("STSPEC", 5, $1, $2, $3, $4, $5); }
+            |   STRUCT ID { $$ = ("STSPEC", 2, $1, $2); }
             ;
-OPTTAG      :   VAR { $$ = opr(205, 1, $1); }
-            |   /* */ { $$ = NULL; }
+OPTTAG      :   ID { $$ = opr("OPTTAG", 1, $1); }
+            |   /* */ { $$ = opr("OPTTAG", 0); }
             ;
-VAR         :   ID { $$ = id($1); }
-            |   VAR LB INT RB { $$ = opr(206, 4, $1, opr(LB,0), con($3), opr(RB,0)); }
+VAR         :   ID { $$ = opr("VAR", 1, $1); }
+            |   VAR LB INT RB { $$ = opr("VAR", 4, $1, $2, $3, $4); }
             ;
-FUNC        :   VAR LP PARAS RP { $$ = opr(207, 4, $1, opr(LP,0), $3, opr(RP,0)); }
+FUNC        :   ID LP PARAS RP { $$ = opr("FUNC", 4, $1, $2, $3, $4); }
             ;
-PARAS       :   PARA COMMA PARAS { $$ = opr(208, 3, $1, opr(COMMA,0), $3); }
-            |   PARA { $$ = opr(208, 1, $1); }
-            |   /* */ { $$ = NULL; }
+PARAS       :   PARA COMMA PARAS { $$ = opr("PARAS", 3, $1, $2, $3); }
+            |   PARA { $$ = opr("PARAS", 1, $1); }
+            |   /* */ { $$ = opr("PARAS", 0); }
             ;
-PARA        :   SPEC VAR { $$ = opr(209, 2, $1, $2); }
+PARA        :   SPEC VAR { $$ = opr("PARA", 2, $1, $2); }
             ;
-STMTBLOCK   :   LC DEFS STMTS RC { $$ = opr(210, 4, opr(LC,0), $2, $3, opr(RC,0)); }
+STMTBLOCK   :   LC DEFS STMTS RC { $$ = opr("STMTBLOCK", 4, $1, $2, $3, $4); }
             ;
-STMTS       :   STMT STMTS { $$ = opr(211, 2, $1, $2); }
-            |   /* */ { $$ = NULL; }
+STMTS       :   STMT STMTS { $$ = opr("STMTS", 2, $1, $2); }
+            |   /* */ { $$ = opr("STMTS", 0); }
             ;
-STMT        :   EXP SEMI { $$ = opr(212, 2, $1, opr(SEMI,0)); }
-            |   STMTBLOCK { $$ = opr(212, 1, $1); }
-            |   RETURN EXP SEMI { $$ = opr(212, 3, opr(RETURN,0), $2, opr(SEMI,0)); }
-            |   IF LP EXP RP STMT ESTMT { $$ = opr(212, 6, opr(IF,0), opr(LP,0), $3, opr(RP,0), $5, $6); }
-            |   FOR LP EXPNULL SEMI EXPNULL SEMI EXPNULL RP STMT { $$ = opr(212, 9, opr(FOR,0), opr(LP,0), $3, opr(SEMI,0), $5, opr(SEMI,0), $7, opr(RP,0), $9); }
-            |   CONT SEMI { $$ = opr(212, 2, opr(CONT,0), opr(SEMI,0)); }
-            |   BREAK SEMI { $$ = opr(212, 2, opr(BREAK,0), opr(SEMI,0)); }
+STMT        :   EXP SEMI { $$ = opr("STMT", 2, $1, $2); }
+            |   STMTBLOCK { $$ = opr("STMT", 1, $1); }
+            |   RETURN EXP SEMI { $$ = opr("STMT", 3, $1, $2, $3); }
+            |   IF LP EXP RP STMT ESTMT { $$ = opr("STMT", 6, $1, $2, $3, $4, $5, $6); }
+            |   FOR LP EXP SEMI EXP SEMI EXP RP STMT { $$ = opr("STMT", 9, $1, $2, $3, $4, $5, $6, $7, $8, $9); }
+            |   CONT SEMI { $$ = opr("STMT", 2, $1, $2); }
+            |   BREAK SEMI { $$ = opr("STMT", 2, $1, $2); }
             ;
-ESTMT       :   ELSE STMT { $$ = opr(213, 2, opr(ELSE,0), $2); }
-            |   /* */ { $$ = NULL; }
+ESTMT       :   ELSE STMT { $$ = opr("ESTMT", 2, $1, $2); }
+            |   /* */ { $$ = opr("ESTMT", 0); }
             ;
-DEFS        :   DEF DEFS { $$ = opr(214, 2, $1, $2); }
-            |   /* */ { $$ = NULL; }
+DEFS        :   DEF DEFS { $$ = opr("DEFS", 2, $1, $2); }
+            |   /* */ { $$ = opr("DEFS", 0); }
             ;
-DEF         :   SPEC DECS SEMI { $$ = opr(215, 3, $1, $2, opr(SEMI,0)); }
+DEF         :   SPEC DECS SEMI { $$ = opr("DEF", 3, $1, $2, $3); }
             ;
-DECS        :   DEC COMMA DECS { $$ = opr(216, 3, $1, opr(COMMA,0), $3); }
-            |   DEC { $$ = opr(216, 1, $1); }
+DECS        :   DEC COMMA DECS { $$ = opr("DECS", 3, $1, $2, $3); }
+            |   DEC { $$ = opr("DECS", 1, $1); }
             ;
-DEC         :   VAR { $$ = opr(217, 1, $1); }
-            |   VAR ASSIGNOP INIT { temp = which_operator($2); $$ = opr(217, 3, $1, opr(temp,0), $3); }
+DEC         :   VAR { $$ = opr("DEC", 1, $1); }
+            |   VAR ASSIGNOP INIT { $$ = opr("DEC", 3, $1, $2, $3); }
             ;
-INIT        :   EXP { $$ = opr(218, 1, $1); }
-            |   LC ARGS RC { $$ = opr(218, 3, opr(LC,0), $2, opr(RC,0)); }
+INIT        :   EXP { $$ = opr("INIT", 1, $1); }
+            |   LC ARGS RC { $$ = opr("INIT", 3, $1, $2, $3); }
             ;
-ARRS        :   LB EXP RB ARRS { $$ = opr(219, 4, opr(LB,0), $2, opr(RB,0), $4); }
-            |   /* */ { $$ = NULL; }
+ARRS        :   LB EXP RB ARRS { $$ = opr("ARRS", 4, $1, $2, $3, $4); }
+            |   /* */ { $$ = opr("ARRS", 0); }
             ;
-ARGS        :   EXP COMMA ARGS { $$ = opr(220, 3, $1, opr(COMMA,0), $3); }
-            |   EXP { $$ = opr(220, 1, $1); }
+ARGS        :   EXP COMMA ARGS { $$ = opr("ARGS", 3, $1, $2, $3); }
+            |   EXP { $$ = opr("ARGS", 1, $1); }
             ;
-EXP         :   EXP BINARYOP3 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP4 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP5 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP6 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP7 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP8 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP9 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP10 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP11 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   EXP BINARYOP12 EXP { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); }
-            |   UNARYOP EXP { temp = which_operator($1); $$ = opr(221, 2, opr(temp,0), $2); }
-            |   LP EXP RP { $$ = opr(221, 3, opr(LP,0), $2, opr(RP,0)); }
-            |   VAR LP ARGS RP { $$ = opr(221, 4, $1, opr(LP,0), $3, opr(RP,0)); }
-            |   VAR ARRS { $$ = opr(221, 2, $1, $2); }
-            |   EXP DOT VAR { $$ = opr(221, 3, $1, opr(DOT,0), $3); }
-            |   INT { $$ = con($1); }
-            |   BINARYOP4 INT { temp = which_operator($1); $$ = opr(221, 2, opr(temp,0), con($2)); }
-            |   EXP ASSIGNOP INIT { temp = which_operator($2); $$ = opr(221, 3, $1, opr(temp,0), $3); } /* Assign operation should be added. */
+EXP         :   EXP ASSIGNOP EXP { printf("assinop\n"); $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP3 EXP { printf("*/\n"); $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP4 EXP { printf("+-\n"); $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP5 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP6 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP7 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP8 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP9 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP10 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP11 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   EXP BINARYOP12 EXP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   UNARYOP EXP { printf("unaryop\n"); $$ = opr("EXP", 2, $1, $2); }
+            |   LP EXP RP { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   ID LP ARGS RP { $$ = opr("EXP", 4, $1, $2, $3, $4); }
+            |   ID ARRS { $$ = opr("EXP", 2, $1, $2); }
+            |   EXP DOT ID { $$ = opr("EXP", 3, $1, $2, $3); }
+            |   INT { $$ = opr("EXP", 1, $1); }
+            |   BINARYOP4 INT { printf("binaryop4\n"); $$ = opr("EXP", 2, $1, $2); }
+            |   /* */ { $$ = opr("EXP", 0); }
             ;
-EXPNULL     :   EXP { $$ = opr(222, 1, $1); }
-            |   /* */ { $$ = NULL; }
-            ;
-
 %%
 
 /* all the needed functions */
-void update_attr(nodeType*n, attrT attr);
-void push_stack(char* var_id, int space, int is_para, char* num);
-int get_id_space(char* id);
+void update_attr(nodeType* n, attrT attr);
+void push_stack(char* name, int space, int is_para, char* num);
+int get_id_space(char* name);
 void pop_stack(int space);
-char* get_id_para(char* id);
+char* get_id_para(char* name);
 char* get_varid(nodeType* n);
 char* get_tmp();
-char* get_id_num(char* id);
+char* get_id_num(char* name);
 void do_write(nodeType* n);
 void do_read(nodeType* n);
 void do_PROGRAM(nodeType* n);
 void do_EXTDEFS(nodeType* n);
-char* do_EXTDEF(nodeType* n);
+void do_EXTDEF(nodeType* n);
 void do_EXTVARS(nodeType* n, char* c);
 char* do_SPEC(nodeType* n);
 char* do_STSPEC(nodeType* n);
@@ -206,76 +193,82 @@ char* do_INIT(nodeType* n);
 char* do_ARRS(nodeType* n);
 char* do_ARGS(nodeType* n);
 char* do_EXP(nodeType* n);
-char* do_EXPNULL(nodeType* n);
+//char* do_EXPNULL(nodeType* n);
 
 /* implementation! */
 
 /* update the node */
 void update_attr(nodeType* n, attrT attr){
-    if(n==NULL) return;
-    //printf("%d\n", n->opr.oper);
-    n->attr = attr;
-    int k;
-    for(k = 0;k<n->opr.nops;k++){
-        update_attr(n->opr.op[k], attr);
+    //printf("%s attr %s\n", stack[0].Name, stack[0].Num);
+    //if(n==NULL) return;
+    n->Attr = attr;
+    n = n->Son;
+    while(n!=NULL){
+        update_attr(n, attr);
+        n = n->Sibling;
     }
     return;
 }
 
 /* push */
-void push_stack(char* var_id, int space, int is_para, char* num){
-    stack[stack_p].id = strdup(var_id);
-    stack[stack_p].space = space;
-    stack[stack_p].is_para = is_para;
-    stack[stack_p].num = num;
+void push_stack(char* name, int space, int is_para, char* num){
+    //printf("%s,%s\n", name, num);
+    stack[stack_p].Name = strdup(name);
+    stack[stack_p].Space = space;
+    stack[stack_p].Is_para = is_para;
+    stack[stack_p].Num = num;
+    //printf("%s-%s\n", stack[stack_p].Name, stack[stack_p].Num);
     stack_p++;
     return;
 }
 
 /* pop */
 void pop_stack(int space){
-    while(stack[stack_p-1].space == space){
+    while(stack[stack_p-1].Space == space){
         stack_p--;
     }
     return;
 }
 
 /* get identifier's space */
-int get_id_space(char* id){
+int get_id_space(char* name){
     int i;
-    for(i = 0;i<stack_p;i++){
-        if(strcmp(id, stack[i].id) == 0) return stack[i].space;
+    for(i = 0;i<stack_p;++i){
+        if(strcmp(name, stack[i].Name) == 0) return stack[i].Space;
     }
     return 0;
 }
 
 /* get para field */
-char* get_id_para(char* id){
+char* get_id_para(char* name){
     int i;
-    for(i = 0;i<stack_p;i++){
-        if((strcmp(id, stack[i].id) == 0) && (stack[i].is_para == 1)){
+    for(i = 0;i<stack_p;++i){
+        if((strcmp(name, stack[i].Name) == 0) && (stack[i].Is_para == 1)){
             char* ret;
             ret = (char*)malloc(sizeof(char)*CODE_LEN);
-            sprintf(ret, "%s.addr", id);
+            sprintf(ret, "%s.addr", name);
             return ret;
         }
     }
-    return id;
+    return name;
 }
 
 /* get tmp */
 char* get_tmp(){
     char* ret;
     ret = malloc(sizeof(char)*70);
-    sprintf(ret, "%%tmp_%d", counter++);
+    sprintf(ret, "%%tmp_%d", counter);
+    counter++;
     return ret;
 }
 
 /* get num */
-char* get_id_num(char* id){
+char* get_id_num(char* name){
+    //printf("%s num %s\n", stack[0].Name, stack[0].Num);
     int i;
-    for(i = 0;i<stack_p;i++){
-        if(strcmp(id, stack[i].id) == 0) return stack[i].num;
+    for(i = 0;i<stack_p;++i){
+        //printf("%s %s\n", stack[i].Name, stack[i].Num);
+        if(strcmp(name, stack[i].Name) == 0) return stack[i].Num;
     }
     return "";
 }
@@ -283,7 +276,7 @@ char* get_id_num(char* id){
 /* deal with write */
 void do_write(nodeType* n){
     char* reg;
-    reg = do_ARGS(n->opr.op[2]);
+    reg = do_ARGS(n->Son->Sibling->Sibling);
     fprintf(yyout, "%%call%d = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str1, i32 0, i32 0), %s)\n", counter, reg);
     counter++;
     return;
@@ -291,11 +284,11 @@ void do_write(nodeType* n){
 
 /* deal with read */
 void do_read(nodeType* n){
-    attrT tmp_attr = {n->attr.space, 1};
-    n->opr.op[2]->attr = tmp_attr;
-    update_attr(n->opr.op[2], tmp_attr);
+    attrT attr = {n->Attr.Space, 1};
+    n->Son->Sibling->Sibling->Attr = attr;
+    update_attr(n->Son->Sibling->Sibling, attr);
     char* reg;
-    reg = do_ARGS(n->opr.op[2]);
+    reg = do_ARGS(n->Son->Sibling->Sibling);
     fprintf(yyout, "%%call%d = call i32 (i8*, ...)* @__isoc99_scanf(i8* getelementptr inbounds ([3 x i8]* @.str, i32 0, i32 0), %s)\n", counter, reg);
     counter++;
     return;
@@ -308,134 +301,141 @@ void do_PROGRAM(nodeType* n){
     fprintf(yyout, "@.str1 = private unnamed_addr constant [4 x i8] c\"%%d\\0A\\00\", align 1\n");
     fprintf(yyout, "declare i32 @printf(i8*, ...)\n");
     fprintf(yyout, "declare i32 @__isoc99_scanf(i8*, ...)\n");
-    do_EXTDEFS(n->opr.op[0]);
+    do_EXTDEFS(n->Son);
     return;
 }
 
 /* deal with EXTDEFS */
 void do_EXTDEFS(nodeType* n){
-    printf("EXTDEFS\n");
-    if(n==NULL) return;
-    else{
-        printf("extdef\n");
-        do_EXTDEF(n->opr.op[0]);
-        printf("extdefs\n");
-        do_EXTDEFS(n->opr.op[1]);
-        printf("done\n");
+    //printf("EXTDEFS\n");
+    if(n->Son!=NULL){
+        //printf("extdef\n");
+        do_EXTDEF(n->Son);
+        //printf("extdefs\n");
+        do_EXTDEFS(n->Son->Sibling);
+        //printf("done\n");
     }
     return;
 }
 
 /* deal with EXTDEF */
-char* do_EXTDEF(nodeType* n){
-    printf("EXTDEF\n");
+void do_EXTDEF(nodeType* n){
+    //printf("EXTDEF\n");
     char* t;
-    if( n->opr.op[0]->opr.oper == 203 ){
-        t = do_SPEC(n->opr.op[0]);
-        if( n->opr.op[1]->opr.oper == 202 ){
-            do_EXTVARS(n->opr.op[1], t);
-        }
-        else{
-            //printf("spec func stmtblock\n");
-            attrT tmp_attr = {n->opr.op[1]->attr.space+1};
-            update_attr(n->opr.op[1], tmp_attr);
-            update_attr(n->opr.op[2], tmp_attr);
-            do_FUNC(n->opr.op[1], t);
-            do_STMTBLOCK(n->opr.op[2]);
-            fprintf(yyout, "}\n");
-            pop_stack(n->opr.op[2]->attr.space);
-            //printf("done\n");
-        }
+    t = do_SPEC(n->Son);
+    //printf("extdef-spec done\n");
+    if(strcmp(n->Son->Sibling->Text, "EXTVARS") == 0){
+        //printf("extdef-extvars begin\n");
+        do_EXTVARS(n->Son->Sibling, t);
+        //printf("extdef-extvars done\n");
     }
     else{
-        do_OPTTAG(n->opr.op[1]);
-        do_EXTVARS(n->opr.op[2], t);
-        return "struct";
+        //printf("spec func stmtblock\n");
+        attrT attr = {n->Son->Sibling->Attr.Space+1};
+
+        update_attr(n->Son->Sibling, attr);
+        update_attr(n->Son->Sibling->Sibling, attr);
+        //printf("%s extdef %s\n", stack[0].Name, stack[0].Num);
+        do_FUNC(n->Son->Sibling, t);
+        //printf("%s extdef2 %s\n", stack[0].Name, stack[0].Num);
+        do_STMTBLOCK(n->Son->Sibling->Sibling);
+        fprintf(yyout, "}\n");
+        pop_stack(n->Son->Sibling->Sibling->Attr.Space);
+        //printf("done\n");
     }
-    return "";
+    //printf("extdef done\n");
+    return;
 }
 
 /* deal with EXTVARS */
 void do_EXTVARS(nodeType* n, char* c){
-    printf("EXTVARS\n");
-    //printf("extvars %d\n", n->opr.nops);
-    if(n==NULL) return;
-    else{
-        printf("%d\n", n->opr.nops);
-        do_DEC(n->opr.op[0], c);
-        printf("extvars >1?\n");
-        if(n->opr.nops>1){
-            //printf("dec comma extvars\n");
-            do_EXTVARS(n->opr.op[2], c);
+    //printf("EXTVARS\n");
+    if(n->Son!=NULL){
+        //do_DEC(n->opr.op[0], c);
+        //printf("extvars >1?\n");
+        do_DEC(n->Son, c);
+        if(n->Son->Sibling!=NULL){
+            do_EXTVARS(n->Son->Sibling->Sibling, c);
         }
     }
-    printf("extvars done\n");
+    //printf("extvars done\n");
     return;
 }
 
 /* deal with SPEC */
 char* do_SPEC(nodeType* n){
-    printf("SPEC\n");
-    if(n->opr.op[0]->opr.oper == TYPE) return "i32";
-    else return do_STSPEC(n->opr.op[0]);
+    //printf("SPEC\n");
+    if(strcmp(n->Son->Text, "int")==0) return "i32";
+    else return do_STSPEC(n->Son);
 }
 
 /* deal with STSPEC */
 char* do_STSPEC(nodeType* n){
-    printf("STSPEC\n");
-    do_OPTTAG(n->opr.op[1]);
-    do_DEFS(n->opr.op[3]);
+    //printf("STSPEC\n");
+    if(strcmp(n->Son->Sibling->Text, "OPTTAG")==0){
+        do_OPTTAG(n->Son->Sibling);
+        do_DEFS(n->Son->Sibling->Sibling->Sibling);
+    }
     return "struct";
 }
 
 /* deal with OPTTAG */
 void do_OPTTAG(nodeType* n){
-    printf("OPTTAG\n");
+    //printf("OPTTAG\n");
     return;
 }
 
 /* deal with VAR */
 char* do_VAR(nodeType* n){
-    printf("VAR\n");
+    //printf("VAR\n");
     char* ret;
-    if(n->type == typeId){
+    if(n->Son->Sibling==NULL){
         //sprintf(ret, "%s", n->id.i);
-        ret = strdup(n->id.i);
+        ret = strdup(n->Son->Text);
     }
-    printf("%s\n", ret);
+    //printf("%s\n", ret);
     return ret;
 }
 
 /* deal with FUNC */
 char* do_FUNC(nodeType* n, char* c){
-    printf("FUNC\n");
+    //printf("FUNC\n");
     char* name;
     char* paras;
-    name = strdup(do_VAR(n->opr.op[0]));
-    paras = do_PARAS(n->opr.op[2]);
+    name = strdup(n->Son->Text);
+    printf("%s func %s\n", stack[0].Name, stack[0].Num);
+    paras = do_PARAS(n->Son->Sibling->Sibling);
+    printf("%s func2 %s\n", stack[0].Name, stack[0].Num);
     fprintf(yyout, "define %s @%s(%s", c, name, paras);
     return;
 }
 
 /* deal with PARAS */
 char* do_PARAS(nodeType* n){
-    printf("PARAS\n");
-    char* ret;
-    ret = (char*)malloc(sizeof(char)*CODE_LEN);
-    char init[CODE_LEN] = "";
-    if(n!=NULL){
-        strcat(ret, do_PARA(n->opr.op[0], 0));
-        strcat(init, do_PARA(n->opr.op[0], 1));
-        while(n->opr.nops>1){
-            n = n->opr.op[2];
-            if(n!=NULL){
+    //printf("PARAS\n");
+    printf("%s paras0 %s\n", stack[0].Name, stack[0].Num);
+    char* ret = (char*)malloc(sizeof(char)*CODE_LEN);
+    //char ret[CODE_LEN] = "";
+	char init[CODE_LEN] = "";
+    printf("%s paras %s\n", stack[0].Name, stack[0].Num);
+    if(n->Son!=NULL){
+        char* a = do_PARA(n->Son, 0);
+        char* b = do_PARA(n->Son, 1);
+        strcat(ret, a);
+        strcat(init, b);
+        while(n->Son->Sibling!=NULL){
+            n = n->Son->Sibling->Sibling;
+            if(n->Son!=NULL){
                 strcat(ret, ", ");
-                strcat(ret, do_PARA(n->opr.op[0], 0));
-                strcat(init, do_PARA(n->opr.op[0], 1));
+                a = do_PARA(n->Son, 0);
+                b = do_PARA(n->Son, 1);
+                strcat(ret, a);
+                strcat(init, b);
             }
-            break;
+            else break;
         }
     }
+    printf("%s paras2 %s\n", stack[0].Name, stack[0].Num);
     strcat(ret, ") {\nentry:\n");
     strcat(ret, init);
     return ret;
@@ -443,83 +443,86 @@ char* do_PARAS(nodeType* n){
 
 /* deal with PARA */
 char* do_PARA(nodeType* n, int mode){
-    printf("PARA\n");
+    //printf("PARA\n");
     char* ret;
     ret = (char*)malloc(sizeof(char)*CODE_LEN);
-    char* t = do_SPEC(n->opr.op[0]);
-    char* var = do_VAR(n->opr.op[1]);
+    char* spec = do_SPEC(n->Son);
+    char* var = do_VAR(n->Son->Sibling);
     if(mode == 0){
-        sprintf(ret, "%s %%%s", t, var);
+        sprintf(ret, "%s %%%s", spec, var);
     }
     else{
         sprintf(ret, "%%%s.addr = alloca i32, align 4\nstore i32 %%%s, i32* %%%s.addr, align 4\n", var, var, var);
-        push_stack(var, n->opr.op[0]->attr.space, 1, 0);
+        push_stack(var, n->Son->Attr.Space, 1, 0);
     }
     return ret;
 }
 
 /* deal with STMTBLOCK */
 void do_STMTBLOCK(nodeType* n){
-    printf("STMTBLOCK\n");
-    do_DEFS(n->opr.op[1]);
-    do_STMTS(n->opr.op[2]);
+    //printf("STMTBLOCK\n");
+    do_DEFS(n->Son->Sibling);
+    do_STMTS(n->Son->Sibling->Sibling);
+    return;
 }
 
 /* deal with STMTS */
 void do_STMTS(nodeType* n){
-    printf("STMTS\n");
-    if(n!=NULL){
-        do_STMT(n->opr.op[0]);
-        do_STMTS(n->opr.op[1]);
+    //printf("STMTS\n");
+    if(n->Son!=NULL){
+        do_STMT(n->Son);
+        do_STMTS(n->Son->Sibling);
     }
     return;
 }
 
 /* deal with STMT */
 void do_STMT(nodeType* n){
-    printf("STMT\n");
+    //printf("STMT\n");
     char* ret;
-    if(n->opr.op[0]->opr.oper == 221){
-        ret = do_EXP(n->opr.op[0]);
+    if(strcmp(n->Son->Text, "EXP")==0){
+        ret = do_EXP(n->Son);
     }
-    else if(n->opr.op[0]->opr.oper == 210){
-        do_STMTBLOCK(n->opr.op[0]);
+    else if(strcmp(n->Son->Text, "STMTBLOCK")==0){
+        do_STMTBLOCK(n->Son);
     }
-    else if(n->opr.op[0]->opr.oper == RETURN){
-        ret = do_EXP(n->opr.op[1]);
+    else if(strcmp(n->Son->Text, "return")==0){
+        ret = do_EXP(n->Son->Sibling);
         fprintf(yyout, "ret i32 %s\n", ret);
     }
-    else if(n->opr.op[0]->opr.oper == IF){
+    else if(strcmp(n->Son->Text, "if")==0){
         int tag = counter;
         counter++;
-        ret = do_EXP(n->opr.op[2]);
+        ret = do_EXP(n->Son->Sibling->Sibling);
         fprintf(yyout, "br i1 %s, label %%if.then%d, label %%if.else%d\n", ret, tag, tag);
         fprintf(yyout, "if.then%d:\n", tag);
-        do_STMT(n->opr.op[4]);
+        do_STMT(n->Son->Sibling->Sibling->Sibling->Sibling);
         fprintf(yyout, "br label %%if.end%d\n", tag);
         fprintf(yyout, "if.else%d:\n", tag);
-        do_ESTMT(n->opr.op[5]);
+        do_ESTMT(n->Son->Sibling->Sibling->Sibling->Sibling->Sibling);
         fprintf(yyout, "br label %%if.end%d\n", tag);
         fprintf(yyout, "if.end%d:\n", tag);
     }
-    else if(n->opr.op[0]->opr.oper == FOR){
+    else if(strcmp(n->Son->Text, "for")==0){
         int tag = counter;
         counter++;
-        ret = do_EXPNULL(n->opr.op[2]);
+        ret = do_EXP(n->Son->Sibling->Sibling);
         fprintf(yyout, "br label %%for.cond%d\n", tag);
         fprintf(yyout, "for.cond%d:\n", tag);
-        ret = do_EXPNULL(n->opr.op[4]);
+        ret = do_EXP(n->Son->Sibling->Sibling->Sibling->Sibling);
         char* t = get_tmp();
-        if(strcmp(n->opr.op[4]->opr.op[0]->opr.op[0]->opr.op[0]->id.i, "x")==0){
+        //printf("what %s----------------------------------------------------\n", n->opr.op[4]->opr.op[0]->id.i);
+        if(strcmp(n->Son->Sibling->Sibling->Sibling->Sibling->Son->Text, "x")==0){
             fprintf(yyout, "%s = icmp ne i32 %s, 0\n", t, ret);
             fprintf(yyout, "br i1 %s, label %%for.body%d, label %%for.end%d\n", t, tag, tag);
         }
         else fprintf(yyout, "br i1 %s, label %%for.body%d, label %%for.end%d\n", ret, tag, tag);
+        //printf("yes\n");
         fprintf(yyout, "for.body%d:\n", tag);
-        do_STMT(n->opr.op[8]);
+        do_STMT(n->Son->Sibling->Sibling->Sibling->Sibling->Sibling->Sibling->Sibling->Sibling);
         fprintf(yyout, "br label %%for.inc%d\n", tag);
         fprintf(yyout, "for.inc%d:\n", tag);
-        ret = do_EXPNULL(n->opr.op[6]);
+        ret = do_EXP(n->Son->Sibling->Sibling->Sibling->Sibling->Sibling->Sibling);
         fprintf(yyout, "br label %%for.cond%d\n", tag);
         fprintf(yyout, "for.end%d:\n", tag);
     }
@@ -528,81 +531,81 @@ void do_STMT(nodeType* n){
 
 /* deal with ESTMT */
 void do_ESTMT(nodeType* n){
-    printf("ESTMT\n");
-    if(n!=NULL){
-        do_STMT(n->opr.op[1]);
+    //printf("ESTMT\n");
+    if(n->Son!=NULL){
+        do_STMT(n->Son->Sibling);
     }
     return;
 }
 
 /* deal with DEFS */
 void do_DEFS(nodeType* n){
-    printf("DEFS\n");
-    if(n!=NULL){
-        do_DEF(n->opr.op[0]);
-        do_DEFS(n->opr.op[1]);
+    //printf("DEFS\n");
+    if(n->Son!=NULL){
+        do_DEF(n->Son);
+        do_DEFS(n->Son->Sibling);
     }
     return;
 }
 
 /* deal with DEF */
 void do_DEF(nodeType* n){
-    printf("DEF\n");
+    //printf("DEF\n");
     //char* ret;
     //ret = (char*)malloc(sizeof(char)*CODE_LEN);
     //sprintf(ret, "");
-    char* t;
-    t = do_SPEC(n->opr.op[0]);
-    do_DECS(n->opr.op[1], t);
+    char* t = do_SPEC(n->Son);
+    do_DECS(n->Son->Sibling, t);
     return;
 }
 
 /* deal with DECS */
 void do_DECS(nodeType* n, char* c){
-    printf("DECS\n");
-    do_DEC(n->opr.op[0], c);
-    //printf("decs >1?\n");
-    if(n->opr.nops>1){
-        //printf("dec comma decs\n");
-        do_DECS(n->opr.op[2], c);
+    //printf("DECS\n");
+    do_DEC(n->Son, c);
+    if(n->Son->Sibling!=NULL){
+        do_DECS(n->Son->Sibling->Sibling, c);
     }
-    //printf("decs done\n");
     return;
 }
 
 /* deal with DEC */
 void do_DEC(nodeType* n, char* c){
-    printf("DEC\n");
+    //printf("DEC\n");
     char code[CODE_LEN] = "";
-    char tmp[CODE_LEN] = "";
     char* var;
     char* value;
-    if(n->opr.nops == 1){
-        if(n->opr.op[0]->type != typeId){
-            var = do_VAR(n->opr.op[0]->opr.op[0]);
-            char* t;
-            sprintf(t, "%d", n->opr.op[0]->opr.op[2]->con.value);
-            if(n->opr.op[0]->attr.space == 0) sprintf(code, "@%s = common global [%s x %s] zeroinitializer, align 4\n", var, t, c);
+    if(n->Son->Sibling==NULL){ // DEC : VAR
+        if(n->Son->Son->Sibling!=NULL){ // VAR : VAR LB INT RB
+            var = do_VAR(n->Son->Son);
+            //char t[CODE_LEN] = "";
+            //strcpy(t, n->Son->Son->Sibling->Sibling->Text);
+            //printf("%s:%s\n", var, t);
+            if(n->Son->Attr.Space == 0) sprintf(code, "@%s = common global [%s x %s] zeroinitializer, align 4\n", var, n->Son->Son->Sibling->Sibling->Text, c);
             else sprintf(code, "%%%s = alloca [%s ], align 4\n", var, c);
-            push_stack(var, n->opr.op[0]->attr.space, 0, t);
+            push_stack(var, n->Son->Attr.Space, 0, n->Son->Son->Sibling->Sibling->Text);
         }
-        else {
-            var = do_VAR(n->opr.op[0]);
-            if(n->opr.op[0]->attr.space == 0) sprintf(code, "@%s = common global %s 0, align 4\n", var, c);
+        else { // VAR : ID
+            var = do_VAR(n->Son);
+            //printf("%s\n", var);
+            if(n->Son->Attr.Space == 0) sprintf(code, "@%s = common global %s 0, align 4\n", var, c);
             else sprintf(code, "%%%s = alloca %s, align 4\n", var, c);
-            push_stack(var, n->opr.op[0]->attr.space, 0, "0");
+            push_stack(var, n->Son->Attr.Space, 0, "0");
         }
     }
-    else{
-        value = do_INIT(n->opr.op[2]);
-        if(n->opr.op[0]->opr.nops > 1){
-            printf("var assignop init\n");
-            var = do_VAR(n->opr.op[0]->opr.op[0]);
-            if(n->opr.op[0]->attr.space == 0){
-                char* t;
-                sprintf(t, "%d", n->opr.op[0]->opr.op[2]->con.value);
-                sprintf(code, "@%s = global [%s x %s] [%s], align 4\n", var, t, c, value);
-                push_stack(var, n->opr.op[0]->attr.space, 0, t);
+    else{ // DEC : VAR ASSIGNOP INIT
+        value = do_INIT(n->Son->Sibling->Sibling);
+        if(n->Son->Son->Sibling!=NULL){ // VAR : VAR LB INT RB
+            //printf("var assignop init\n");
+            var = do_VAR(n->Son->Son);
+            //printf("var assignop init done %d\n", n->opr.op[0]->attr.space);
+            if(n->Son->Attr.Space == 0){
+                //char t[CODE_LEN] = "";
+                //strcpy(t, n->Son->Son->Sibling->Sibling->Text);
+                //printf("%s:%s\n", var, t);
+                /* THERE IS THE PROBLEM! */
+                sprintf(code, "@%s = global [%s x %s] [%s], align 4\n", var, n->Son->Son->Sibling->Sibling->Text, c, value);
+                push_stack(var, n->Son->Attr.Space, 0, n->Son->Son->Sibling->Sibling->Text);
             }
             else{
                 sprintf(code, "%%ans = alloca [2 x i32], align 4\n");
@@ -610,73 +613,69 @@ void do_DEC(nodeType* n, char* c){
                 strcat(code, "store i32 0, i32* %arrayans.d0\n");
                 strcat(code, "%arrayans.d1 = getelementptr inbounds i32* %arrayans.d0, i32 1\n");
                 strcat(code, "store i32 1, i32* %arrayans.d1\n");
-                push_stack(var, n->opr.op[0]->attr.space, 0, "2");
+                push_stack(var, n->Son->Attr.Space, 0, "2");
             }
         }
         else{
-            printf("var(id) assignop init\n");
-            var = do_VAR(n->opr.op[0]);
-            if(n->opr.op[0]->attr.space == 0) sprintf(code, "@%s = global %s %s, align 4\n", var, c, value);
+            //printf("var(id) assignop init\n");
+            var = do_VAR(n->Son);
+            if(n->Son->Attr.Space == 0) sprintf(code, "@%s = global %s %s, align 4\n", var, c, value);
             else sprintf(code, "%%%s = alloca %s, align 4\nstore %s %s, %s* %%%s, align 4\n", var, c, c, value, c, var);
-            push_stack(var, n->opr.op[0]->attr.space, 0, "0");
-            //printf("done\n");
+            push_stack(var, n->Son->Attr.Space, 0, "0");
         }
     }
     fprintf(yyout, "%s", code);
-    printf("dec done\n");
     return;
 }
 
 /* deal with INIT */
 char* do_INIT(nodeType* n){
-    printf("INIT\n");
+    //printf("INIT\n");
     char* ret;
-    if(n->opr.op[0]->type == typeCon){
-        sprintf(ret, "%d", n->con.value);
-    }
-    else if(n->opr.op[0]->opr.oper == 221){
-        ret = do_EXP(n->opr.op[0]);
+    if(strcmp(n->Son->Text, "EXP")==0){
+        ret = do_EXP(n->Son);
     }
     else{
-        ret = do_ARGS(n->opr.op[1]);
+        ret = do_ARGS(n->Son->Sibling);
     }
     return ret;
+    //return "";
 }
 
 /* deal with ARRS */
 char* do_ARRS(nodeType* n){
-    printf("ARRS\n");
+    //printf("ARRS\n");
     char* ret;
     if(n!=NULL){
-        ret = do_EXP(n->opr.op[1]);
+        ret = do_EXP(n->Son->Sibling);
     }
     return ret;
 }
 
 /* deal with ARGS */
 char* do_ARGS(nodeType* n){
-    printf("ARGS\n");
-    char* ret;
-    ret = (char*)malloc(sizeof(char)*CODE_LEN);
-    //sprintf(ret, "");
-    char tmp[CODE_LEN] = "";
+    //printf("ARGS\n");
+    char* ret = (char*)malloc(sizeof(char)*CODE_LEN);
+    sprintf(ret, "");
+    char t[CODE_LEN] = "";
     char* exp;
     char c;
-    if(n->attr.is_left == 0) c = ' ';
+    if(n->Attr.Is_left == 0) c = ' ';
     else c = '*';
-    exp = do_EXP(n->opr.op[0]);
-    sprintf(tmp, "i32%c %s", c, exp);
-    if(n->opr.nops == 1){
-        strcat(ret, tmp);
+    exp = do_EXP(n->Son);
+    sprintf(t, "i32%c %s", c, exp);
+    if(n->Son->Sibling==NULL){
+        strcat(ret, t);
     }
     else{
-        exp = do_ARGS(n->opr.op[2]);
-        sprintf(ret, "%s,%s", tmp, exp);
+        exp = do_ARGS(n->Son->Sibling->Sibling);
+        sprintf(ret, "%s,%s", t, exp);
     }
     return ret;
 }
 
 /* deal with EXPNULL */
+/*
 char* do_EXPNULL(nodeType* n){
     printf("EXPNULL\n");
     char* ret;
@@ -686,164 +685,210 @@ char* do_EXPNULL(nodeType* n){
     }
     return ret;
 }
+*/
 
 /* deal with EXP */
 char* do_EXP(nodeType* n){
-    printf("EXP\n");
+    //printf("EXP\n");
     char* ret;
     ret = malloc(sizeof(char)*CODE_LEN);
-    //printf("begin choosing\n");
-    if(n->type == typeCon){
-        //printf("it is a int\n");
-        sprintf(ret, "%d", n->con.value);
-        //ret = strdup(n->con.value);
+    if(n->Son==NULL){
+        return "0";
     }
-    else if(n->opr.op[0]->opr.oper == 221){
+    else if(n->Son->Sibling==NULL){
+        //printf("it is a int\n");
+        //sprintf(ret, "%d", n->con.value);
+        ret = strdup(n->Son->Text);
+    }
+    else if(strcmp(n->Son->Text, "EXP")==0){
         //printf("it is a exp\n");
         char* a;
         char* b;
-        if(n->opr.op[1]->opr.oper == '='){
-            n->opr.op[0]->attr.is_left = 1;
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        //printf("%d\n", n->opr.op[1]->opr.oper);
+        if(strcmp(n->Son->Sibling->Text, "=")==0){
+            //printf("=\n");
+            n->Son->Attr.Is_left = 1;
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "store i32 %s, i32* %s, align 4\n", b, a);
         }
-        else if(n->opr.op[1]->opr.oper == '+'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "+")==0){
+            printf("enter +\n");
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = add i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '-'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "-")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = sub i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '*'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "*")==0){
+            printf("enter *\n");
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = mul i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == 315){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "/")==0){
+         
+        }
+        else if(strcmp(n->Son->Sibling->Text, "==")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = icmp eq i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '>'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, ">")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = icmp sgt i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '<'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "<")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = icmp slt i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '%'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "%")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = srem i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == 300){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "&&")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = and i1 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == '&'){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, "||")==0){
+         
+        }
+        else if(strcmp(n->Son->Sibling->Text, "&")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             char* retret = get_tmp();
             fprintf(yyout, "%s = and i32 %s, %s\n", retret, a, b);
             ret = get_tmp();
             fprintf(yyout, "%s = icmp ne i32 %s, 0\n", ret, retret);
         }
-        else if(n->opr.op[1]->opr.oper == 310){
-            a = do_EXP(n->opr.op[0]);
-            b = do_EXP(n->opr.op[2]);
+        else if(strcmp(n->Son->Sibling->Text, ">>=")==0){
+            a = do_EXP(n->Son);
+            b = do_EXP(n->Son->Sibling->Sibling);
             ret = get_tmp();
             fprintf(yyout, "%s = lshr i32 %s, %s \n", ret, a, b);
-            attrT attr = n->opr.op[0]->attr;
-            attr.is_left = 1;
-            update_attr(n->opr.op[0], attr);
-            a = do_EXP(n->opr.op[0]);
-            fprintf(yyout, "store i32 %s, i328 %s, align 4\n", ret, a);
+            attrT attr = n->Son->Attr;
+            attr.Is_left = 1;
+            update_attr(n->Son, attr);
+            a = do_EXP(n->Son);
+            fprintf(yyout, "store i32 %s, i32* %s, align 4\n", ret, a);
+        }
+        else if(strcmp(n->Son->Sibling->Text, "<<=")==0){
+         
+        }
+        else if(strcmp(n->Son->Sibling->Text, "+=")==0){
+
+        }
+        else if(strcmp(n->Son->Sibling->Text, "-=")==0){
+         
+        }
+        else if(strcmp(n->Son->Sibling->Text, "*=")==0){
+
+        }
+        else if(strcmp(n->Son->Sibling->Text, "/=")==0){
+         
         }
     }
-    else if(n->opr.op[0]->opr.oper == 317){
-        char* a = do_EXP(n->opr.op[1]);
+    else if(strcmp(n->Son->Text, "++")==0){
+        char* a = do_EXP(n->Son->Sibling);
         ret = get_tmp();
         fprintf(yyout, "%s = add i32 %s, 1 \n", ret, a);
-        attrT attr = n->opr.op[0]->attr;
-        attr.is_left = 1;
-        update_attr(n->opr.op[1], attr);
-        a = do_EXP(n->opr.op[1]);
+        attrT attr = n->Son->Attr;
+        attr.Is_left = 1;
+        update_attr(n->Son->Sibling, attr);
+        a = do_EXP(n->Son->Sibling);
         fprintf(yyout, "store i32 %s, i32* %s, align 4\n", ret, a);
     }
-    else if(n->opr.op[0]->opr.oper == '!'){
-        ret = get_tmp();
-        fprintf(yyout, "%s = icmp eq i32 %s, 0\n", ret, do_EXP(n->opr.op[1]));
+    else if(strcmp(n->Son->Text, "--")==0){
+
     }
-    else if(n->opr.op[0]->opr.oper == '-'){
+    else if(strcmp(n->Son->Text, "!")==0){
         ret = get_tmp();
-        fprintf(yyout, "%s = sub i32 0, %s\n", ret, do_EXP(n->opr.op[1]));
+        char* exp = do_EXP(n->Son->Sibling);
+        fprintf(yyout, "%s = icmp eq i32 %s, 0\n", ret, exp);
     }
-    else if((n->opr.op[0]->opr.oper == 206) || (n->opr.op[0]->type == typeId)){
-        //printf("it is var\n");
-        if(n->opr.op[1] == NULL){
+    else if(strcmp(n->Son->Text, "-")==0){
+        ret = get_tmp();
+        char* exp = do_EXP(n->Son->Sibling);
+        fprintf(yyout, "%s = sub i32 0, %s\n", ret, exp);
+    }
+    else if(strcmp(n->Son->Sibling->Text, "ARRS")==0){
+        //printf("it is id\n");
+        if(n->Son->Sibling->Son==NULL){
+            //printf("var arrs(null)\n");
             char c;
-            if(get_id_space(n->opr.op[0]->id.i) == 0) c = '@';
+            //printf("%s\n", n->opr.op[0]->id.i);
+            if(get_id_space(n->Son->Text) == 0) c = '@';
             else c = '%';
-            if(n->attr.is_left == 0){
+            if(n->Attr.Is_left == 0){
                 ret = get_tmp();
-                fprintf(yyout, "%s = load i32* %c%s, align 4\n", ret, c, get_id_para(n->opr.op[0]->id.i));
+                char *a = get_id_para(n->Son->Text);
+                fprintf(yyout, "%s = load i32* %c%s, align 4\n", ret, c, a);
             }
             else{
-                 ret = get_tmp();
-                 sprintf(ret, "%c%s", c, get_id_para(n->opr.op[0]->id.i));
-            }
-        }
-        else if(n->opr.op[1]->opr.oper == 219){
-            ret = get_tmp();
-            char c;
-            char* arrs;
-            arrs = do_ARRS(n->opr.op[1]);
-            if(get_id_space(n->opr.op[0]->id.i) == 0) c = '@';
-            else c = '%';
-            if(n->attr.is_left == 0){
-                char* reg = get_tmp();
-                fprintf(yyout, "%s = getelementptr inbounds [%s x i32]* %c%s, i32 0, i32 %s\n", reg, get_id_num(n->opr.op[0]->id.i), c, get_id_para(n->opr.op[0]->id.i), arrs);
-                fprintf(yyout, "%s = load i32* %s, align 4\n", ret, reg);
-            }
-            else {
-                fprintf(yyout, "%s = getelementptr inbounds [%s x i32]* %c%s, i32 0, i32 %s\n", ret, get_id_num(n->opr.op[0]->id.i), c, get_id_para(n->opr.op[0]->id.i), arrs);
+                ret = get_tmp();
+                char *a = get_id_para(n->Son->Text);
+                sprintf(ret, "%c%s", c, a);
             }
         }
         else{
-            if(strcmp(n->opr.op[0]->id.i, "read") == 0) do_read(n);
-            else if(strcmp(n->opr.op[0]->id.i, "write") == 0) do_write(n);
-            else{
-                ret = do_ARGS(n->opr.op[2]);
-                fprintf(yyout, "%%call%d = call i32 @%s (%s)\n", counter, n->opr.op[0]->id.i, ret);
-                sprintf(ret, "%%call%d", counter);
-                counter++;
+            //printf("var arrs\n");
+            ret = get_tmp();
+            char c;
+            char* arrs;
+            arrs = do_ARRS(n->Son->Sibling);
+            if(get_id_space(n->Son->Text) == 0) c = '@';
+            else c = '%';
+            if(n->Attr.Is_left == 0){
+                char* reg = get_tmp();
+                //printf("get id num: %s\n", n->opr.op[0]->id.i);
+                //printf("what we get: %s %s\n", get_id_num(n->opr.op[0]->id.i), get_id_num("mat"));
+                char* a = get_id_num(n->Son->Text);
+                char* b = get_id_para(n->Son->Text);
+                fprintf(yyout, "%s = getelementptr inbounds [%s x i32]* %c%s, i32 0, i32 %s\n", reg, a, c, b, arrs);
+                fprintf(yyout, "%s = load i32* %s, align 4\n", ret, reg);
+            }
+            else {
+                char* a = get_id_num(n->Son->Text);
+                char* b = get_id_para(n->Son->Text);
+                fprintf(yyout, "%s = getelementptr inbounds [%s x i32]* %c%s, i32 0, i32 %s\n", ret, a, c, b, arrs);
             }
         }
     }
-    else if(n->opr.op[0]->opr.oper == LP){
-        ret = do_EXP(n->opr.op[1]);
+    else if(strcmp(n->Son->Sibling->Sibling->Text, "ARGS")==0){
+        if(strcmp(n->Son->Text, "read") == 0) do_read(n);
+        else if(strcmp(n->Son->Text, "write") == 0) do_write(n);
+        else{
+            ret = do_ARGS(n->Son->Sibling->Sibling);
+            fprintf(yyout, "%%call%d = call i32 @%s (%s)\n", counter, n->Son->Text, ret);
+            sprintf(ret, "%%call%d", counter);
+            counter++;
+        }
     }
+    else if(strcmp(n->Son->Text, "(")==0){
+        ret = do_EXP(n->Son->Sibling);
+    }
+    //printf("exp done\n");
     return ret;
 }
 
 /* Used to return the value representing the specific operator. */
+/*
 int which_operator(char * in){
     if(in[0]=='&' && in[1]=='&') return 300;
     if(in[0]=='|' && in[1]=='|') return 301;
@@ -876,10 +921,12 @@ int which_operator(char * in){
     if(in[0]=='~') return '~';
     if(in[0]=='!') return '!';
 }
+*/
 
-#define SIZEOF_NODETYPE ((char *) &p->con - (char *)p)
+//#define SIZEOF_NODETYPE ((char *) &p->con - (char *)p)
 
 /* Return a node of a constant value */
+/*
 nodeType *con(int value){
     nodeType *p;
     size_t nodeSize;
@@ -892,9 +939,13 @@ nodeType *con(int value){
 
     return p;
 }
+*/
 
 /* Return a node of an identifier. */
+/*
 nodeType *id(char* i){
+    //printf("%s\n", i);
+    int k;
     nodeType * p;
     size_t nodeSize;
 
@@ -903,28 +954,47 @@ nodeType *id(char* i){
 
     char * xx = (char *)malloc(64*sizeof(char));
     strcpy(xx,i);
+
+    //printf("%s\n", xx);
     p->type = typeId;
     p->id.i = xx;
 
     return p;
 }
+*/
 
 /* Return a node which have children listed in the parameter. */
-nodeType *opr(int oper, int nops, ...){
+nodeType *opr(char* name, int num, ...){
     va_list ap;
     nodeType *p;
-    size_t nodeSize;
+    nodeType *t1;
+    nodeType *t2;
     int i;
-
-    nodeSize = SIZEOF_NODETYPE + sizeof(oprNodeType) + (nops-1)*sizeof(nodeType *);
-    if((p=malloc(nodeSize)) == NULL) yyerror("out of memory");
-
-    p->type = typeOpr;
-    p->opr.oper = oper;
-    p->opr.nops = nops;
-    va_start(ap, nops);
-    for(i=0;i<nops;i++) p->opr.op[i] = va_arg(ap, nodeType*);
-    va_end(ap);
+    p = (nodeType*)malloc(sizeof(nodeType));
+    //printf("opr %s\n", name);
+    p->Type = 4;
+    p->Text = (char*)malloc(sizeof(char)*70);
+    strcpy(p->Text, name);
+    //printf("opr1\n");
+    p->Sibling = NULL;
+    //printf("opr2\n");
+    if(num==0){
+        p->Son = NULL;
+    }
+    else{
+        va_start(ap, num);
+        for(i=0;i<num;i++){
+            if(i==0){
+                t2 = p->Son = va_arg(ap, nodeType*);
+            }
+            else{
+                t1 = t2->Sibling = va_arg(ap, nodeType*);
+                t2 = t1;
+            }
+        }
+        t2->Sibling = NULL;
+        va_end(ap);
+    }
     return p;
 }
 
@@ -932,12 +1002,19 @@ int main(int argc, char *argv[]){
     yyin = fopen(argv[1],"r");
     //yyout = freopen(argv[2],"w",stdout);
     yyout = fopen(argv[2],"w");
+    printf("parse\n");
     yyparse();
-
-    stack = (IDT*)malloc(sizeof(IDT)*ID_NUMBER);
+    printf("stack\n");
+    stack = (stackElement*)malloc(sizeof(stackElement)*ID_NUMBER);
     do_PROGRAM(root);
 
     fclose(yyin);
     fclose(yyout);
+    return 0;
+}
+
+int yyerror(char *s){
+    printf("ERROR! %s\n", s);
+    exit(0);
     return 0;
 }
