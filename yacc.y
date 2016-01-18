@@ -330,23 +330,24 @@ void do_EXTDEFS(nodeType* n){
 void do_EXTDEF(nodeType* n){
     printf("EXTDEF\n");
     char* t;
+    //printf("extdef 1: %d\n", n->opr.op[1]->opr.oper);
     t = do_SPEC(n->opr.op[0]);
-    //printf("extdef-spec done\n");
-    if( n->opr.op[1]->opr.oper == 202 ){
-        //printf("extdef-extvars begin\n");
+    printf("extdef-spec done\n");
+    if( n->opr.op[2]->opr.oper == SEMI ){
+        printf("extdef-extvars begin\n");
         do_EXTVARS(n->opr.op[1], t);
         printf("extdef-extvars done\n");
     }
     else{
-int k;
+        //int k;
 
-        //printf("spec func stmtblock\n");
+        printf("spec func stmtblock\n");
         attrT tmp_attr = {n->opr.op[1]->attr.space+1};
 
         update_attr(n->opr.op[1], tmp_attr);
-for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
+        //for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
         update_attr(n->opr.op[2], tmp_attr);
-for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
+        //for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
         do_FUNC(n->opr.op[1], t);
         do_STMTBLOCK(n->opr.op[2]);
         fprintf(yyout, "}\n");
@@ -388,11 +389,14 @@ char* do_SPEC(nodeType* n){
 
 /* deal with STSPEC */
 char* do_STSPEC(nodeType* n){
-    //printf("STSPEC\n");
-    if(n->opr.op[1]->opr.oper == 205){
+    printf("STSPEC\n");
+    if(n->opr.nops == 5){
+        printf("stspec opttag\n");
         do_OPTTAG(n->opr.op[1]);
+        printf("stspec defs\n");
         do_DEFS(n->opr.op[3]);
     }
+    printf("stspec done\n");
     return "struct";
 }
 
@@ -556,20 +560,23 @@ void do_DEFS(nodeType* n){
     //printf("DEFS\n");
     if(n!=NULL){
         do_DEF(n->opr.op[0]);
+        printf("defs-def done\n");
         do_DEFS(n->opr.op[1]);
+        printf("defs-defs done\n");
     }
     return;
 }
 
 /* deal with DEF */
 void do_DEF(nodeType* n){
-    //printf("DEF\n");
+    printf("DEF\n");
     //char* ret;
     //ret = (char*)malloc(sizeof(char)*CODE_LEN);
     //sprintf(ret, "");
     char* t;
     t = do_SPEC(n->opr.op[0]);
     do_DECS(n->opr.op[1], t);
+    printf("def done\n");
     return;
 }
 
