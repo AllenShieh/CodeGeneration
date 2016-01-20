@@ -1,7 +1,7 @@
 /*
-    This source file mainly defines the grammar in use.
-    Useful functions used for constructing the syntax tree
-    and analyzing the operators are also defined.
+    This source file mainly defines the grammar.
+    Functions used for constructing the syntax tree
+    and code generation are also defined.
 */
 
 %{
@@ -13,20 +13,21 @@
 #include <ctype.h>
 #include "node.h"
 
-void yyerror(const char *str){
-    fprintf(stderr,"error: %s\n", str);
-}
-
 nodeType *opr(int oper, int nops, ...);
 nodeType *id(char * i);
 nodeType *con(int value);
 int which_operator(char * in);
 
-int sym[26];
 int temp;
 FILE *yyin;
 FILE *yyout;
 nodeType* root;
+
+void yyerror(char *s){
+    fprintf(stderr, "error: %s\n", s);
+    fprintf(yyout, "Error.\n");
+    exit(0);
+}
 
 typedef struct _IDT{
     char* id;
@@ -73,12 +74,11 @@ int stack_p = 0;
 %type <nPtr> STMT EXP STMTS ESTMT STMTBLOCK ARGS ARRS EXTDEF EXTDEFS EXTVARS DEFS DEF DECS DEC VAR SPEC STSPEC OPTTAG INIT FUNC PARA PARAS PROGRAM ID
 
 /*
-    Note that terminal 'ID' should be replaced by 'VAR' in some particular places.
-    Otherwise, the contents of the identifier are not right because the variable
-    referred is a point of char.
+    The problem of wrong contents in ID is solved by moving the
+    node construct function to 'lex.l' file.
 */
 %%
-PROGRAM     :   EXTDEFS { /* Do the drawing action */ $$ = opr(199, 1, $1); root = $$; /* ex($1);*/ }
+PROGRAM     :   EXTDEFS { $$ = opr(199, 1, $1); /* get the root! */ root = $$; }
             ;
 EXTDEFS     :   EXTDEF EXTDEFS { $$ = opr(200, 2, $1, $2); }
             |   /* */ { $$ = NULL; }
@@ -303,7 +303,7 @@ void do_read(nodeType* n){
 
 /* deal with PROGRAM */
 void do_PROGRAM(nodeType* n){
-    printf("PROGRAM\n");
+    //printf("PROGRAM\n");
     fprintf(yyout, "@.str = private unnamed_addr constant [3 x i8] c\"%%d\\00\", align 1\n");
     fprintf(yyout, "@.str1 = private unnamed_addr constant [4 x i8] c\"%%d\\0A\\00\", align 1\n");
     fprintf(yyout, "declare i32 @printf(i8*, ...)\n");
@@ -328,26 +328,22 @@ void do_EXTDEFS(nodeType* n){
 
 /* deal with EXTDEF */
 void do_EXTDEF(nodeType* n){
-    printf("EXTDEF\n");
+    //printf("EXTDEF\n");
     char* t;
     //printf("extdef 1: %d\n", n->opr.op[1]->opr.oper);
     t = do_SPEC(n->opr.op[0]);
-    printf("extdef-spec done\n");
+    //printf("extdef-spec done\n");
     if( n->opr.op[2]->opr.oper == SEMI ){
-        printf("extdef-extvars begin\n");
+        //printf("extdef-extvars begin\n");
         do_EXTVARS(n->opr.op[1], t);
-        printf("extdef-extvars done\n");
+        //printf("extdef-extvars done\n");
     }
     else{
-        //int k;
-
-        printf("spec func stmtblock\n");
+        //printf("spec func stmtblock\n");
         attrT tmp_attr = {n->opr.op[1]->attr.space+1};
 
         update_attr(n->opr.op[1], tmp_attr);
-        //for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
         update_attr(n->opr.op[2], tmp_attr);
-        //for(k=0;k<stack_p;k++) printf("id:%s,num:%s\n", stack[k].id, stack[k].num);
         do_FUNC(n->opr.op[1], t);
         do_STMTBLOCK(n->opr.op[2]);
         fprintf(yyout, "}\n");
@@ -360,20 +356,20 @@ void do_EXTDEF(nodeType* n){
 
 /* deal with EXTVARS */
 void do_EXTVARS(nodeType* n, char* c){
-    printf("EXTVARS\n");
+    //printf("EXTVARS\n");
     if(n==NULL) return;
     else{
         //do_DEC(n->opr.op[0], c);
         //printf("extvars >1?\n");
         if(n->opr.nops > 1){
-            printf("dec comma extvars\n");
+            //printf("dec comma extvars\n");
             do_DEC(n->opr.op[0], c);
             do_EXTVARS(n->opr.op[2], c);
         }
         else{
-            printf("dec\n");
+            //printf("dec\n");
             do_DEC(n->opr.op[0], c);
-            printf("extvars-dec done\n");
+            //printf("extvars-dec done\n");
         }
     }
     //printf("extvars done\n");
@@ -389,14 +385,14 @@ char* do_SPEC(nodeType* n){
 
 /* deal with STSPEC */
 char* do_STSPEC(nodeType* n){
-    printf("STSPEC\n");
+    //printf("STSPEC\n");
     if(n->opr.nops == 5){
-        printf("stspec opttag\n");
+        //printf("stspec opttag\n");
         do_OPTTAG(n->opr.op[1]);
-        printf("stspec defs\n");
+        //printf("stspec defs\n");
         do_DEFS(n->opr.op[3]);
     }
-    printf("stspec done\n");
+    //printf("stspec done\n");
     return "struct";
 }
 
@@ -414,7 +410,7 @@ char* do_VAR(nodeType* n){
         //sprintf(ret, "%s", n->id.i);
         ret = strdup(n->id.i);
     }
-    printf("%s\n", ret);
+    //printf("%s\n", ret);
     return ret;
 }
 
@@ -492,20 +488,20 @@ void do_STMTS(nodeType* n){
 void do_STMT(nodeType* n){
     //printf("STMT\n");
     char* ret;
-    if(n->opr.op[0]->opr.oper == 221){
+    if(n->opr.op[0]->opr.oper == 221){ // STMT : EXP SEMI
         ret = do_EXP(n->opr.op[0]);
     }
-    else if(n->opr.op[0]->opr.oper == 210){
+    else if(n->opr.op[0]->opr.oper == 210){ // STMT : STMTBLOCK
         do_STMTBLOCK(n->opr.op[0]);
     }
-    else if(n->opr.op[0]->opr.oper == RETURN){
+    else if(n->opr.op[0]->opr.oper == RETURN){ // STMT : RETURN EXP SEMI
         ret = do_EXP(n->opr.op[1]);
         fprintf(yyout, "ret i32 %s\n", ret);
     }
-    else if(n->opr.op[0]->opr.oper == IF){
+    else if(n->opr.op[0]->opr.oper == IF){ // STMT : IF LP EXP RP STMT ESTMT
         int tag = counter;
         counter++;
-        printf("if\n");
+        //printf("if\n");
         ret = do_EXP(n->opr.op[2]);
         fprintf(yyout, "br i1 %s, label %%if.then%d, label %%if.else%d\n", ret, tag, tag);
         fprintf(yyout, "if.then%d:\n", tag);
@@ -516,25 +512,25 @@ void do_STMT(nodeType* n){
         fprintf(yyout, "br label %%if.end%d\n", tag);
         fprintf(yyout, "if.end%d:\n", tag);
     }
-    else if(n->opr.op[0]->opr.oper == FOR){
-        printf("enter for\n");
+    else if(n->opr.op[0]->opr.oper == FOR){ // STMT : FOR LP EXP SEMI EXP SEMI EXP RP STMT
+        //printf("enter for\n");
         int tag = counter;
         counter++;
         ret = do_EXP(n->opr.op[2]);
         fprintf(yyout, "br label %%for.cond%d\n", tag);
         fprintf(yyout, "for.cond%d:\n", tag);
-        printf("for 2 done\n");
+        //printf("for 2 done\n");
         ret = do_EXP(n->opr.op[4]);
-        printf("for 4 done\n");
+        //printf("for 4 done\n");
         char* t = get_tmp();
-        printf("what %d\n", n->opr.op[4]->opr.op[0]->opr.oper);
+        //printf("what %d\n", n->opr.op[4]->opr.op[0]->opr.oper);
         //if(strcmp(n->opr.op[4]->opr.op[0]->id.i, "x")==0){
         if(n->opr.op[4]->opr.op[0]->type == typeId){
             fprintf(yyout, "%s = icmp ne i32 %s, 0\n", t, ret);
             fprintf(yyout, "br i1 %s, label %%for.body%d, label %%for.end%d\n", t, tag, tag);
         }
         else fprintf(yyout, "br i1 %s, label %%for.body%d, label %%for.end%d\n", ret, tag, tag);
-        printf("yes\n");
+        //printf("yes\n");
         fprintf(yyout, "for.body%d:\n", tag);
         do_STMT(n->opr.op[8]);
         fprintf(yyout, "br label %%for.inc%d\n", tag);
@@ -560,23 +556,23 @@ void do_DEFS(nodeType* n){
     //printf("DEFS\n");
     if(n!=NULL){
         do_DEF(n->opr.op[0]);
-        printf("defs-def done\n");
+        //printf("defs-def done\n");
         do_DEFS(n->opr.op[1]);
-        printf("defs-defs done\n");
+        //printf("defs-defs done\n");
     }
     return;
 }
 
 /* deal with DEF */
 void do_DEF(nodeType* n){
-    printf("DEF\n");
+    //printf("DEF\n");
     //char* ret;
     //ret = (char*)malloc(sizeof(char)*CODE_LEN);
     //sprintf(ret, "");
     char* t;
     t = do_SPEC(n->opr.op[0]);
     do_DECS(n->opr.op[1], t);
-    printf("def done\n");
+    //printf("def done\n");
     return;
 }
 
@@ -584,24 +580,24 @@ void do_DEF(nodeType* n){
 void do_DECS(nodeType* n, char* c){
     //printf("DECS\n");
     do_DEC(n->opr.op[0], c);
-    printf("other dec?\n");
+    //printf("other dec?\n");
     if(n->opr.nops>1){
         do_DECS(n->opr.op[2], c);
     }
-    printf("decs done\n");
+    //printf("decs done\n");
     return;
 }
 
 /* deal with DEC */
 void do_DEC(nodeType* n, char* c){
-    printf("DEC\n");
+    //printf("DEC\n");
     char code[CODE_LEN] = "";
     //char tmp[CODE_LEN] = "";
     char* var;
     char* value;
     if(n->opr.nops == 1){
-        if(n->opr.op[0]->type != typeId){
-            printf("var [ int ]\n");
+        if(n->opr.op[0]->type != typeId){ // DEC : VAR ( VAR[int] )
+            //printf("var [ int ]\n");
             var = do_VAR(n->opr.op[0]->opr.op[0]);
             //char t[CODE_LEN] = "";
             //sprintf(t, "%d", n->opr.op[0]->opr.op[2]->con.value);
@@ -609,22 +605,22 @@ void do_DEC(nodeType* n, char* c){
             else sprintf(code, "%%%s = alloca [%s ], align 4\n", var, c);
             push_stack(var, n->opr.op[0]->attr.space, 0, n->opr.op[0]->opr.op[2]->con.value);
         }
-        else {
-            printf("id\n");
+        else { // DEC : VAR ( ID )
+            //printf("id\n");
             var = do_VAR(n->opr.op[0]);
-            printf("id done\n");
+            //printf("id done\n");
             if(n->opr.op[0]->attr.space == 0) sprintf(code, "@%s = common global %s 0, align 4\n", var, c);
             else sprintf(code, "%%%s = alloca %s, align 4\n", var, c);
             push_stack(var, n->opr.op[0]->attr.space, 0, "0");
-            printf("push done\n");
+            //printf("push done\n");
         }
     }
     else{
-        printf("var init\n");
+        //printf("var init\n");
         value = do_INIT(n->opr.op[2]);
-        printf("init done\n");
-        if(n->opr.op[0]->opr.nops > 1){
-            printf("var assignop init\n");
+        //printf("init done\n");
+        if(n->opr.op[0]->opr.nops > 1){ // DEC : VAR ( VAR[int] ) ASSIGNOP INIT
+            //printf("var assignop init\n");
             var = do_VAR(n->opr.op[0]->opr.op[0]);
             //printf("var assignop init done %d\n", n->opr.op[0]->attr.space);
             if(n->opr.op[0]->attr.space == 0){
@@ -642,7 +638,7 @@ void do_DEC(nodeType* n, char* c){
                 push_stack(var, n->opr.op[0]->attr.space, 0, "2");
             }
         }
-        else{
+        else{ // DEC : VAR ( ID ) ASSIGNOP INIT
             //printf("var(id) assignop init\n");
             var = do_VAR(n->opr.op[0]);
             if(n->opr.op[0]->attr.space == 0) sprintf(code, "@%s = global %s %s, align 4\n", var, c, value);
@@ -651,16 +647,16 @@ void do_DEC(nodeType* n, char* c){
         }
     }
     fprintf(yyout, "%s", code);
-    printf("dec done\n");
+    //printf("dec done\n");
     return;
 }
 
 /* deal with INIT */
 char* do_INIT(nodeType* n){
-    printf("INIT\n");
+    //printf("INIT\n");
     char* ret;
     if(n->opr.op[0]->type == typeCon){
-        printf("int %s\n", n->opr.op[0]->con.value);
+        //printf("int %s\n", n->opr.op[0]->con.value);
         ret = (char*)malloc(sizeof(char)*100);
         //sprintf(ret, "%s", n->con.value);
 	    ret = strdup(n->opr.op[0]->con.value);
@@ -671,7 +667,7 @@ char* do_INIT(nodeType* n){
     else{
         ret = do_ARGS(n->opr.op[1]);
     }
-    printf("init done\n");
+    //printf("init done\n");
     return ret;
     //return "";
 }
@@ -724,22 +720,22 @@ char* do_EXPNULL(nodeType* n){
 
 /* deal with EXP */
 char* do_EXP(nodeType* n){
-    printf("EXP\n");
+    //printf("EXP\n");
     if(n==NULL) return "0";
-    printf("not null\n");
+    //printf("not null\n");
     char* ret;
     ret = malloc(sizeof(char)*CODE_LEN);
-    if(n->type == typeCon){
-        printf("it is a int \n");
+    if(n->type == typeCon){ // EXP : INT
+        //printf("it is a int \n");
         //sprintf(ret, "%s", n->con.value);
         ret = strdup(n->con.value);
     }
     else if(n->opr.op[0]->opr.oper == 221 || n->opr.op[0]->type == typeCon){
-        printf("it begin with a exp\n");
+        //printf("it begin with a exp\n");
         char* a;
         char* b;
         //printf("%d\n", n->opr.op[1]->opr.oper);
-        if(n->opr.op[1]->opr.oper == '='){
+        if(n->opr.op[1]->opr.oper == '='){ // EXP : EXP ASSIGNOP EXP
             //printf("=\n");
             n->opr.op[0]->attr.is_left = 1;
             a = do_EXP(n->opr.op[0]);
@@ -767,8 +763,8 @@ char* do_EXP(nodeType* n){
             ret = get_tmp();
             fprintf(yyout, "%s = mul i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == 315){
-            printf("enter ==\n");
+        else if(n->opr.op[1]->opr.oper == 315){ // "=="
+            //printf("enter ==\n");
             a = do_EXP(n->opr.op[0]);
             b = do_EXP(n->opr.op[2]);
             ret = get_tmp();
@@ -781,7 +777,7 @@ char* do_EXP(nodeType* n){
             fprintf(yyout, "%s = icmp sgt i32 %s, %s\n", ret, a, b);
         }
         else if(n->opr.op[1]->opr.oper == '<'){
-            printf("enter <\n");
+            //printf("enter <\n");
             a = do_EXP(n->opr.op[0]);
             b = do_EXP(n->opr.op[2]);
             ret = get_tmp();
@@ -793,7 +789,7 @@ char* do_EXP(nodeType* n){
             ret = get_tmp();
             fprintf(yyout, "%s = srem i32 %s, %s\n", ret, a, b);
         }
-        else if(n->opr.op[1]->opr.oper == 300){
+        else if(n->opr.op[1]->opr.oper == 300){ // "&&"
             a = do_EXP(n->opr.op[0]);
             b = do_EXP(n->opr.op[2]);
             ret = get_tmp();
@@ -807,7 +803,7 @@ char* do_EXP(nodeType* n){
             ret = get_tmp();
             fprintf(yyout, "%s = icmp ne i32 %s, 0\n", ret, retret);
         }
-        else if(n->opr.op[1]->opr.oper == 310){
+        else if(n->opr.op[1]->opr.oper == 310){ // ">>="
             a = do_EXP(n->opr.op[0]);
             //printf("shift how much\n");
             b = do_INIT(n->opr.op[2]);
@@ -821,8 +817,8 @@ char* do_EXP(nodeType* n){
             fprintf(yyout, "store i32 %s, i32* %s, align 4\n", ret, a);
         }
     }
-    else if(n->opr.op[0]->opr.oper == 317){
-        printf("317\n");
+    else if(n->opr.op[0]->opr.oper == 317){ // "++"
+        //printf("317\n");
         char* a = do_EXP(n->opr.op[1]);
         ret = get_tmp();
         fprintf(yyout, "%s = add i32 %s, 1 \n", ret, a);
@@ -833,18 +829,18 @@ char* do_EXP(nodeType* n){
         fprintf(yyout, "store i32 %s, i32* %s, align 4\n", ret, a);
     }
     else if(n->opr.op[0]->opr.oper == '!'){
-        printf("!\n");
+        //printf("!\n");
         ret = get_tmp();
         fprintf(yyout, "%s = icmp eq i32 %s, 0\n", ret, do_EXP(n->opr.op[1]));
     }
     else if(n->opr.op[0]->opr.oper == '-'){
-        printf("-\n");
+        //printf("-\n");
         ret = get_tmp();
         fprintf(yyout, "%s = sub i32 0, %s\n", ret, do_EXP(n->opr.op[1]));
     }
     else if(n->opr.op[0]->type == typeId){
-        printf("it is id %s\n", n->opr.op[0]->id.i);
-        if(n->opr.op[1] == NULL){
+        //printf("it is id %s\n", n->opr.op[0]->id.i);
+        if(n->opr.op[1] == NULL){ // EXP : VAR ARRS ( NULL )
             //printf("var arrs(null)\n");
             char c;
             //printf("%s\n", n->opr.op[0]->id.i);
@@ -859,7 +855,7 @@ char* do_EXP(nodeType* n){
                 sprintf(ret, "%c%s", c, get_id_para(n->opr.op[0]->id.i));
             }
         }
-        else if(n->opr.op[1]->opr.oper == 219){
+        else if(n->opr.op[1]->opr.oper == 219){ // EXP : VAR ARRS
             //printf("var arrs\n");
             ret = get_tmp();
             char c;
@@ -878,7 +874,7 @@ char* do_EXP(nodeType* n){
                 fprintf(yyout, "%s = getelementptr inbounds [%s x i32]* %c%s, i32 0, i32 %s\n", ret, get_id_num(n->opr.op[0]->id.i), c, get_id_para(n->opr.op[0]->id.i), arrs);
             }
         }
-        else{
+        else{ // EXP : VAR LP ARGS RP
             if(strcmp(n->opr.op[0]->id.i, "read") == 0) do_read(n);
             else if(strcmp(n->opr.op[0]->id.i, "write") == 0) do_write(n);
             else{
@@ -889,8 +885,8 @@ char* do_EXP(nodeType* n){
             }
         }
     }
-    else if(n->opr.op[0]->opr.oper == LP){
-        printf("LP\n");
+    else if(n->opr.op[0]->opr.oper == LP){ // EXP : LP EXP RP
+        //printf("LP\n");
         ret = do_EXP(n->opr.op[1]);
     }
     else{
@@ -917,7 +913,7 @@ int which_operator(char * in){
     else if(in[0]=='>' && in[1]=='>') return 312;
     else if(in[0]=='>' && in[1]=='=') return 313;
     else if(in[0]=='<' && in[1]=='=') return 314;
-    else if(in[0]=='=' && in[1]=='=') {printf("exist ==\n"); return 315;}
+    else if(in[0]=='=' && in[1]=='=') return 315;
     else if(in[0]=='!' && in[1]=='=') return 316;
     else if(in[0]=='+' && in[1]=='+') return 317;
     else if(in[0]=='-' && in[1]=='-') return 318;
@@ -947,10 +943,10 @@ nodeType *con(int value){
 	p->con.value = (char*)malloc(sizeof(char)*20);
     char* v = (char*)malloc(sizeof(char)*20);
     sprintf(v, "%d", value);
-    printf("con value is %s\n", v);
+    //printf("con value is %s\n", v);
     p->type = typeCon;
     p->con.value = v;
-    printf("p value is %s\n", p->con.value);
+    //printf("p value is %s\n", p->con.value);
     return p;
 }
 
@@ -999,11 +995,13 @@ int main(int argc, char *argv[]){
     yyin = fopen(argv[1],"r");
     //yyout = freopen(argv[2],"w",stdout);
     yyout = fopen(argv[2],"w");
+    printf("analyze syntax tree\n");
     yyparse();
 
     stack = (IDT*)malloc(sizeof(IDT)*ID_NUMBER);
+    printf("output instructions\n");
     do_PROGRAM(root);
-
+    printf("all procedure done\n");
     fclose(yyin);
     fclose(yyout);
     return 0;

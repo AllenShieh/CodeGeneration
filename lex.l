@@ -91,6 +91,7 @@ ID          [a-zA-Z][a-zA-Z]*
 %%
 #define SIZEOF_NODETYPE ((char *) &p->con - (char *)p)
 
+/* construct the node for identifier */
 nodeType *id(char* i){
     nodeType* p;
     size_t nodeSize;
